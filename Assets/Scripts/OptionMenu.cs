@@ -3,12 +3,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Audio;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 
 public class OptionMenu : MonoBehaviour
 {
     public AudioMixer audioMixer;
-
+    public GameObject VolumeSlider;
     public Dropdown resolutionDropdown;
 
     Resolution[] resolutions;
@@ -43,11 +44,14 @@ public class OptionMenu : MonoBehaviour
     {
         Resolution resolution = resolutions[ResolutionIndex];
         Screen.SetResolution(resolution.width, resolution.height, Screen.fullScreen);
+        
     }
 
     public void SetVolume (float volume)
     {
-        audioMixer.SetFloat("Volume", volume); 
+        audioMixer.SetFloat("Volume", volume);
+        EventSystem.current.SetSelectedGameObject(null);
+        EventSystem.current.SetSelectedGameObject(VolumeSlider);
     }
      public void SetFullscreen (bool isFullscreen)
     {

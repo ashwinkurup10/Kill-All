@@ -1,13 +1,23 @@
 ﻿using UnityEngine;
 using System.Collections;
 using UnityEngine.UI;
+using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 
 // ----- Low Poly FPS Pack Free Version -----
 public class AutomaticGunScriptLPFP : MonoBehaviour {
 
 	//Animator component attached to weapon
 	Animator anim;
-
+	// FOR PAUSE MENU---------
+	public GameObject pauseMenuUI;
+	public GameObject ResumeButton;
+	public static bool GameIsPaused = false;
+	//------------------
+	//PRESS ANY KEY----------------
+	public GameObject anyKey;
+	PlayerControls controls;
 	[Header("Gun Camera")]
 	//Main gun camera
 	public Camera gunCamera;
@@ -166,10 +176,19 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 		currentAmmo = ammo;
 
 		muzzleflashLight.enabled = false;
+
+		controls = new PlayerControls();
+
+		controls.GamePlay.rel.performed += ctx => rel();
+		controls.GamePlay.Shoot.performed += ctx => Shoot();
+		controls.GamePlay.Aim.performed += ctx => Aim();
+		controls.GamePlay.Esc.performed += ctx => Esc();
 	}
 
+
+
 	private void Start () {
-		
+		Time.timeScale = 0f;
 		//Save the weapon name
 		storedWeaponName = weaponName;
 		//Get weapon name from string to text
@@ -182,6 +201,7 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 
 		//Set the shoot sound to audio source
 		shootAudioSource.clip = SoundClips.shootSound;
+		
 	}
 
 	private void LateUpdate () {
@@ -206,39 +226,22 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 	}
 	
 	private void Update () {
+		if (Input.anyKeyDown)
+		{
+			anyKey.SetActive(false);
+			Time.timeScale = 1f;
 
+		}
 		//Aiming
 		//Toggle camera FOV when right click is held down
-		if(Input.GetButton("Fire2") && !isReloading && !isRunning && !isInspecting) 
+		if (Input.GetButton("Fire2") && !isReloading && !isRunning && !isInspecting) 
 		{
+			aim();
 			
-			isAiming = true;
-			//Start aiming
-			anim.SetBool ("Aim", true);
-
-			//When right click is released
-			gunCamera.fieldOfView = Mathf.Lerp(gunCamera.fieldOfView,
-				aimFov,fovSpeed * Time.deltaTime);
-
-			if (!soundHasPlayed) 
-			{
-				mainAudioSource.clip = SoundClips.aimSound;
-				mainAudioSource.Play ();
-	
-				soundHasPlayed = true;
-			}
 		} 
 		else 
 		{
-			//When right click is released
-			gunCamera.fieldOfView = Mathf.Lerp(gunCamera.fieldOfView,
-				defaultFov,fovSpeed * Time.deltaTime);
-
-			isAiming = false;
-			//Stop aiming
-			anim.SetBool ("Aim", false);
-				
-			soundHasPlayed = false;
+			aim2();
 		}
 		//Aiming end
 
@@ -333,91 +336,8 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 		if (Input.GetMouseButton (0) && !outOfAmmo && !isReloading && !isInspecting && !isRunning) 
 		{
 			//Shoot automatic
-			if (Time.time - lastFired > 1 / fireRate) 
-			{
-				lastFired = Time.time;
-
-				//Remove 1 bullet from ammo
-				currentAmmo -= 1;
-
-				shootAudioSource.clip = SoundClips.shootSound;
-				shootAudioSource.Play ();
-
-				if (!isAiming) //if not aiming
-				{
-					anim.Play ("Fire", 0, 0f);
-					//If random muzzle is false
-					if (!randomMuzzleflash && 
-						enableMuzzleflash == true) 
-					{
-						muzzleParticles.Emit (1);
-						//Light flash start
-						StartCoroutine(MuzzleFlashLight());
-					} 
-					else if (randomMuzzleflash == true)
-					{
-						//Only emit if random value is 1
-						if (randomMuzzleflashValue == 1) 
-						{
-							if (enableSparks == true) 
-							{
-								//Emit random amount of spark particles
-								sparkParticles.Emit (Random.Range (minSparkEmission, maxSparkEmission));
-							}
-							if (enableMuzzleflash == true) 
-							{
-								muzzleParticles.Emit (1);
-								//Light flash start
-								StartCoroutine (MuzzleFlashLight ());
-							}
-						}
-					}
-				} 
-				else //if aiming
-				{
-					
-					anim.Play ("Aim Fire", 0, 0f);
-
-					//If random muzzle is false
-					if (!randomMuzzleflash) {
-						muzzleParticles.Emit (1);
-					//If random muzzle is true
-					} 
-					else if (randomMuzzleflash == true) 
-					{
-						//Only emit if random value is 1
-						if (randomMuzzleflashValue == 1) 
-						{
-							if (enableSparks == true) 
-							{
-								//Emit random amount of spark particles
-								sparkParticles.Emit (Random.Range (minSparkEmission, maxSparkEmission));
-							}
-							if (enableMuzzleflash == true) 
-							{
-								muzzleParticles.Emit (1);
-								//Light flash start
-								StartCoroutine (MuzzleFlashLight ());
-							}
-						}
-					}
-				}
-
-				//Spawn bullet from bullet spawnpoint
-				var bullet = (Transform)Instantiate (
-					Prefabs.bulletPrefab,
-					Spawnpoints.bulletSpawnPoint.transform.position,
-					Spawnpoints.bulletSpawnPoint.transform.rotation);
-
-				//Add velocity to the bullet
-				bullet.GetComponent<Rigidbody>().velocity = 
-					bullet.transform.forward * bulletForce;
-				
-				//Spawn casing prefab at spawnpoint
-				Instantiate (Prefabs.casingPrefab, 
-					Spawnpoints.casingSpawnPoint.transform.position, 
-					Spawnpoints.casingSpawnPoint.transform.rotation);
-			}
+			shot();
+			
 		}
 
 		//Inspect weapon when T key is pressed
@@ -571,6 +491,136 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 		outOfAmmo = false;
 	}
 
+	private void shot()
+    {
+		if (!outOfAmmo && !isReloading && !isInspecting && !isRunning)
+		{
+			if (Time.time - lastFired > 1 / fireRate)
+			{
+				lastFired = Time.time;
+
+				//Remove 1 bullet from ammo
+				currentAmmo -= 1;
+
+				shootAudioSource.clip = SoundClips.shootSound;
+				shootAudioSource.Play();
+
+				if (!isAiming) //if not aiming
+				{
+					anim.Play("Fire", 0, 0f);
+					//If random muzzle is false
+					if (!randomMuzzleflash &&
+						enableMuzzleflash == true)
+					{
+						muzzleParticles.Emit(1);
+						//Light flash start
+						StartCoroutine(MuzzleFlashLight());
+					}
+					else if (randomMuzzleflash == true)
+					{
+						//Only emit if random value is 1
+						if (randomMuzzleflashValue == 1)
+						{
+							if (enableSparks == true)
+							{
+								//Emit random amount of spark particles
+								sparkParticles.Emit(Random.Range(minSparkEmission, maxSparkEmission));
+							}
+							if (enableMuzzleflash == true)
+							{
+								muzzleParticles.Emit(1);
+								//Light flash start
+								StartCoroutine(MuzzleFlashLight());
+							}
+						}
+					}
+				}
+				else //if aiming
+				{
+
+					anim.Play("Aim Fire", 0, 0f);
+
+					//If random muzzle is false
+					if (!randomMuzzleflash)
+					{
+						muzzleParticles.Emit(1);
+						//If random muzzle is true
+					}
+					else if (randomMuzzleflash == true)
+					{
+						//Only emit if random value is 1
+						if (randomMuzzleflashValue == 1)
+						{
+							if (enableSparks == true)
+							{
+								//Emit random amount of spark particles
+								sparkParticles.Emit(Random.Range(minSparkEmission, maxSparkEmission));
+							}
+							if (enableMuzzleflash == true)
+							{
+								muzzleParticles.Emit(1);
+								//Light flash start
+								StartCoroutine(MuzzleFlashLight());
+							}
+						}
+					}
+				}
+
+				//Spawn bullet from bullet spawnpoint
+				var bullet = (Transform)Instantiate(
+					Prefabs.bulletPrefab,
+					Spawnpoints.bulletSpawnPoint.transform.position,
+					Spawnpoints.bulletSpawnPoint.transform.rotation);
+
+				//Add velocity to the bullet
+				bullet.GetComponent<Rigidbody>().velocity =
+					bullet.transform.forward * bulletForce;
+
+				//Spawn casing prefab at spawnpoint
+				Instantiate(Prefabs.casingPrefab,
+					Spawnpoints.casingSpawnPoint.transform.position,
+					Spawnpoints.casingSpawnPoint.transform.rotation);
+			}
+
+		}
+		
+	}
+
+	private void aim()
+    {
+		if(!isReloading && !isRunning && !isInspecting)
+        {
+			isAiming = true;
+			//Start aiming
+			anim.SetBool("Aim", true);
+
+			//When right click is released
+			gunCamera.fieldOfView = Mathf.Lerp(gunCamera.fieldOfView,
+				aimFov, fovSpeed * Time.deltaTime);
+
+			if (!soundHasPlayed)
+			{
+				mainAudioSource.clip = SoundClips.aimSound;
+				mainAudioSource.Play();
+
+				soundHasPlayed = true;
+			}
+		}
+	
+    }
+	private void aim2()
+    {
+		//When right click is released
+		gunCamera.fieldOfView = Mathf.Lerp(gunCamera.fieldOfView,
+			defaultFov, fovSpeed * Time.deltaTime);
+
+		isAiming = false;
+		//Stop aiming
+		anim.SetBool("Aim", false);
+
+		soundHasPlayed = false;
+	}
+
 	//Enable bullet in mag renderer after set amount of time
 	private IEnumerator ShowBulletInMag () {
 		
@@ -610,6 +660,70 @@ public class AutomaticGunScriptLPFP : MonoBehaviour {
 		else 
 		{
 			isInspecting = false;
+		}
+	}
+	void rel()
+	{
+		if(GameIsPaused == false)
+        {
+			Reload();
+		}
+		
+	}
+	void Shoot()
+    {
+		shot();
+    }
+	void Aim()
+	{
+		if (!isReloading && !isRunning && !isInspecting)
+		{
+			aim();
+
+		}
+		else
+		{
+			aim2();
+		}
+	}
+
+	void OnEnable()
+	{
+		controls.GamePlay.Enable();
+	}
+
+	void OnDisable()
+	{
+		controls.GamePlay.Disable();
+	}
+
+	// FOR PAUSE MENU---------
+	void Pause()
+	{
+		pauseMenuUI.SetActive(true);
+		Time.timeScale = 0f;
+		GameIsPaused = true;
+		EventSystem.current.SetSelectedGameObject(null);
+		EventSystem.current.SetSelectedGameObject(ResumeButton);
+
+
+	}
+	public void Resume()
+	{
+		pauseMenuUI.SetActive(false);
+		Time.timeScale = 1f;
+		GameIsPaused = false;
+	}
+
+	void Esc()
+	{
+		if (GameIsPaused == true)
+		{
+			Resume();
+		}
+		else
+		{
+			Pause();
 		}
 	}
 }
